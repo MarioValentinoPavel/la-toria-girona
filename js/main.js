@@ -39,6 +39,47 @@
     img.src = fig.dataset.src;
   }
 
+  // ---------- portada: el vídeo del bar lleno, reimpreso en riso unas 12 veces por segundo ----------
+  function videoRiso(fig, inkA = '#ff4fa3', inkB = '#2c5cff') {
+    const v = fig.querySelector('video'), cv = fig.querySelector('canvas'), g = cv.getContext('2d');
+    if (reduce || !v) { if (v) v.remove(); return; }
+    const src = document.createElement('canvas'), s = src.getContext('2d', { willReadFrequently: true });
+    let vis = true, last = 0, W = 0, H = 0;
+    new IntersectionObserver(([e]) => { vis = e.isIntersecting; vis ? v.play().catch(() => {}) : v.pause(); }).observe(fig);
+    const size = () => { const r = fig.getBoundingClientRect(); W = Math.round(Math.min(760, r.width * Math.min(2, devicePixelRatio || 1))); H = Math.round(W * r.height / r.width); cv.width = W; cv.height = H; src.width = Math.round(W / 4); src.height = Math.round(H / 4); };
+    size(); new ResizeObserver(size).observe(fig);
+    const frame = (t) => {
+      requestAnimationFrame(frame);
+      if (!vis || v.readyState < 2 || t - last < 84 || !W) return;
+      last = t;
+      const sw = src.width, sh = src.height, k = Math.max(sw / v.videoWidth, sh / v.videoHeight), iw = v.videoWidth * k, ih = v.videoHeight * k;
+      s.drawImage(v, (sw - iw) / 2, (sh - ih) / 2, iw, ih);
+      const px = s.getImageData(0, 0, sw, sh).data;
+      const at = (x, y) => { x = Math.max(0, Math.min(sw - 1, (x / 4) | 0)); y = Math.max(0, Math.min(sh - 1, (y / 4) | 0)); return (y * sw + x) * 4; };
+      // el vídeo es de noche: se aclara un poco antes de tramar para que no quede todo empastado
+      const lum = (x, y) => { const i = at(x, y); return Math.min(1, ((px[i] * .3 + px[i + 1] * .59 + px[i + 2] * .11) / 255) * 2 + .1); };
+      const warm = (x, y) => { const i = at(x, y); return Math.max(0, (px[i] - px[i + 2]) / 255); };
+      g.globalCompositeOperation = 'source-over'; g.fillStyle = '#f4efe3'; g.fillRect(0, 0, W, H);
+      g.globalCompositeOperation = 'multiply';
+      const st = Math.max(6, W / 70), jit = (Math.random() - .5) * 2;
+      const layer = (ink, ang, val, ox, oy) => {
+        g.fillStyle = ink; const ca = Math.cos(ang), sa = Math.sin(ang), R = Math.hypot(W, H);
+        for (let q = -R; q < R; q += st) for (let u = -R; u < R; u += st) {
+          const x = W / 2 + u * ca - q * sa, y = H / 2 + u * sa + q * ca;
+          if (x < -st || y < -st || x > W + st || y > H + st) continue;
+          const kk = val(x, y); if (kk < .05) continue;
+          g.beginPath(); g.arc(x + ox, y + oy, st * .62 * Math.sqrt(kk), 0, 7); g.fill();
+        }
+      };
+      layer(inkA, .26, (x, y) => Math.min(1, Math.max(0, .74 - lum(x, y)) * .8 + warm(x, y) * .6), 0, 0);
+      layer(inkB, 1.31, (x, y) => Math.max(0, (.6 - lum(x, y)) / .6) * .8, 2 + jit, -1 + jit);
+      g.globalCompositeOperation = 'source-over';
+      fig.classList.add('ready');
+    };
+    v.play().catch(() => {});
+    requestAnimationFrame(frame);
+  }
+
   // ---------- generador de carteles ----------
   function poster() {
     const cv = document.getElementById('kCv'), g = cv.getContext('2d');
@@ -82,7 +123,7 @@
       // pie
       g.fillStyle = '#161514'; g.fillRect(0, 1180, W, 170);
       g.fillStyle = A === '#2c5cff' ? '#ffe600' : A; g.font = '400 70px "Rammetto One"'; g.fillText('BAR LA TÒRIA', 70, 1262);
-      g.fillStyle = '#f4efe3'; g.font = "700 25px "Inclusive Sans""; g.fillText(T('VINOS · CERVEZAS · TAPAS', 'VINS · CERVESES · TAPES', 'WINE · BEER · TAPAS') + '   ·   PL. BELL-LLOC 4 · BARRI VELL · GIRONA', 70, 1312);
+      g.fillStyle = '#f4efe3'; g.font = '700 25px "Inclusive Sans"'; g.fillText(T('VINOS · CERVEZAS · TAPAS', 'VINS · CERVESES · TAPES', 'WINE · BEER · TAPAS') + '   ·   PL. BELL-LLOC 4 · BARRI VELL · GIRONA', 70, 1312);
     }
     const redraw = () => (document.fonts ? document.fonts.load('400 40px "Rammetto One"').then(draw) : draw());
     [tI, dI, hI].forEach((el) => el.addEventListener('input', draw));
@@ -122,7 +163,8 @@
   }
 
   function init() {
-    document.querySelectorAll('.ht').forEach((f) => halftone(f));
+    document.querySelectorAll('.ht:not(.hv)').forEach((f) => halftone(f));
+    const hv = document.getElementById('hv'); halftone(hv); videoRiso(hv);
     poster(); header();
     if (!reduce && typeof gsap !== 'undefined') motion();
     document.fonts && document.fonts.ready.then(() => typeof ScrollTrigger !== 'undefined' && ScrollTrigger.refresh());
